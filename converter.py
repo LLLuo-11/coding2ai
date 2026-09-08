@@ -201,8 +201,8 @@ def _render_pdf_pages(src: str, dpi: int) -> list[Image.Image]:
     """
     try:
         from PySide6 import QtPdf
-        from PySide6.QtCore import QSize
-        from PySide6.QtGui import QImage
+        from PySide6.QtCore import QSize, Qt
+        from PySide6.QtGui import QImage, QPainter
     except ImportError as e:
         raise ConvertError("PDF 解析依赖 PySide6.QtPdf，当前环境未安装") from e
 
@@ -216,7 +216,14 @@ def _render_pdf_pages(src: str, dpi: int) -> list[Image.Image]:
         for i in range(doc.pageCount()):
             pts = doc.pagePointSize(i)
             w, h = max(1, round(pts.width() * scale)), max(1, round(pts.height() * scale))
-            qim = doc.render(i, QSize(w, h)).convertToFormat(QImage.Format.Format_RGB888)
+            raw = doc.render(i, QSize(w, h))   # ARGB32，页面未绘制区为透明
+            # PDF 纸面本身是透明，查看器一律垫白底；直接转 RGB888 会把透明区变黑，
+            # 故先用 QPainter 在白色画布上合成，再取不透明 RGB。
+            qim = QImage(w, h, QImage.Format.Format_RGB888)
+            qim.fill(Qt.GlobalColor.white)
+            p = QPainter(qim)
+            p.drawImage(0, 0, raw)
+            p.end()
             data = qim.constBits().tobytes()
             frames.append(Image.frombuffer("RGB", (w, h), data, "raw", "RGB",
                                            qim.bytesPerLine(), 1))
@@ -637,6 +644,21 @@ def demo_pdf() -> None:
     js = convert(src, d, "JPEG", Options(color="gray"))[0]
     with Image.open(js) as im:
         assert im.mode == "L"
+    # 白底回归：QtPdf 渲染的页面未绘制区是透明，必须垫白底而非当黑
+    # （整页铺满的图不会触发；白纸+局部内容才暴露）。
+    patch = os.path.join(d, "patch.pdf")
+    gs = _gs_exe()
+    if gs:
+        import subprocess
+        subprocess.run([gs, "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
+                        "-o", patch, "-c",
+                        "<< /PageSize [300 200] >> setpagedevice "
+                        "0.9 0.1 0.1 setrgbcolor 50 50 100 80 rectfill"],
+                       capture_output=True)
+        with Image.open(convert(patch, d, "PNG", Options(dpi=72))[0]) as im:
+            g = im.convert("L")
+            white = g.histogram()[255] / (g.size[0] * g.size[1])
+            assert white > 0.8, f"白底 PDF 背景应≈白，纯白占比 {white:.0%}"
     print(f"converter pdf demo PASS  ({d})")
 
 

@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 
 from PySide6.QtCore import QThread, Signal, Qt, QSize
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QComboBox, QLabel, QLineEdit, QSpinBox, QFileDialog,
@@ -623,7 +623,12 @@ class MainWindow(QMainWindow):
                 pt = doc.pagePointSize(0)
                 dpi = max(24, min(150, round(box[0] * 72 / max(pt.width(), 1))))
                 w, h = max(1, round(pt.width() * dpi / 72)), max(1, round(pt.height() * dpi / 72))
-                qim = doc.render(0, QSize(w, h)).convertToFormat(QImage.Format.Format_RGB888)
+                raw = doc.render(0, QSize(w, h))   # ARGB32，透明背景需垫白底
+                qim = QImage(w, h, QImage.Format.Format_RGB888)
+                qim.fill(Qt.GlobalColor.white)
+                p = QPainter(qim)
+                p.drawImage(0, 0, raw)
+                p.end()
                 doc.close()
                 img = Image.frombuffer("RGB", (w, h), qim.constBits().tobytes(),
                                        "raw", "RGB", qim.bytesPerLine(), 1)
@@ -632,7 +637,7 @@ class MainWindow(QMainWindow):
                 return self._cap(img, box), note
             if low.endswith(".svg"):
                 from PySide6.QtCore import QRectF
-                from PySide6.QtGui import QGuiApplication, QPainter
+                from PySide6.QtGui import QGuiApplication
                 from PySide6.QtSvg import QSvgRenderer
                 if QGuiApplication.instance() is None:
                     return None, "需要 Qt 环境预览 SVG"
