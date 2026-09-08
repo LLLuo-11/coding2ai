@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+.venv/
+venv/
+
+# PyInstaller 构建产物
+build/
+dist/
+
+# 随包 Ghostscript（约 41MB 第三方二进制，不进仓库；见 README「EPS 输入支持」如何放回）
+vendor/gs/
+
+# 原始需求文档（仅本地，不发布到仓库）
+项目文档.txt
+
+# 编辑器
+.vscode/
+.idea/
